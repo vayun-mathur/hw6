@@ -275,7 +275,9 @@ private:
     HASH_INDEX_T mIndex_;  // index to CAPACITIES
 
     // ADD MORE DATA MEMBERS HERE, AS NECESSARY
-
+    double resizeAlpha_;
+    int cnt;
+    int del;
 };
 
 // ----------------------------------------------------------------------------
@@ -300,13 +302,22 @@ HashTable<K,V,Prober,Hash,KEqual>::HashTable(
     mIndex_ = 0;
     totalProbes_ = 0;
     table_.resize(CAPACITIES[mIndex_], nullptr);
+    resizeAlpha_ = resizeAlpha;
+    cnt = 0;
+    del = 0;
 }
 
 // To be completed
 template<typename K, typename V, typename Prober, typename Hash, typename KEqual>
 HashTable<K,V,Prober,Hash,KEqual>::~HashTable()
 {
-
+    for(HASH_INDEX_T i = 0; i < CAPACITIES[mIndex_]; ++i)
+    {
+        if(table_[i] != nullptr)
+        {
+            delete table_[i];
+        }
+    }
 }
 
 // To be completed
@@ -320,14 +331,6 @@ bool HashTable<K,V,Prober,Hash,KEqual>::empty() const
 template<typename K, typename V, typename Prober, typename Hash, typename KEqual>
 size_t HashTable<K,V,Prober,Hash,KEqual>::size() const
 {
-    int cnt = 0;
-    for(HASH_INDEX_T i = 0; i < CAPACITIES[mIndex_]; ++i)
-    {
-        if(table_[i] != nullptr && !table_[i]->deleted)
-        {
-            cnt++;
-        }
-    }
     return cnt;
 }
 
@@ -335,12 +338,16 @@ size_t HashTable<K,V,Prober,Hash,KEqual>::size() const
 template<typename K, typename V, typename Prober, typename Hash, typename KEqual>
 void HashTable<K,V,Prober,Hash,KEqual>::insert(const ItemType& p)
 {
+    if(size() >= CAPACITIES[mIndex_] * resizeAlpha_) {
+        resize();
+    }
     HASH_INDEX_T h = this->probe(p.first);
     if(npos == h) {
         throw std::logic_error("No free location");
     }
     if(nullptr == table_[h]) {
         table_[h] = new HashItem(p);
+        cnt++;
     } else {
         table_[h]->item = p;
     }
@@ -355,6 +362,8 @@ void HashTable<K,V,Prober,Hash,KEqual>::remove(const KeyType& key)
         return;
     }
     table_[h]->deleted = true;
+    cnt--;
+    del++;
 }
 
 
@@ -435,20 +444,31 @@ void HashTable<K,V,Prober,Hash,KEqual>::resize()
     mIndex_++;
     // Create a new table
     std::vector<HashItem*> newTable(CAPACITIES[mIndex_], nullptr);
+    int newCnt = 0;
+
     // Rehash all non-deleted items
     for(HASH_INDEX_T i = 0; i < CAPACITIES[mIndex_ - 1]; ++i)
     {
         if(table_[i] != nullptr && !table_[i]->deleted)
         {
-            HASH_INDEX_T h = this->probe(table_[i]->item.first);
-            if(nullptr == newTable[h]) {
-                newTable[h] = table_[i];
-            } else {
-                newTable[h]->item = table_[i]->item;
+            HASH_INDEX_T h = hash_(table_[i]->item.first) % CAPACITIES[mIndex_];
+            prober_.init(h, CAPACITIES[mIndex_], table_[i]->item.first);
+            HASH_INDEX_T loc = prober_.next();
+            while(Prober::npos != loc)
+            {
+                if(nullptr == newTable[loc] ) {
+                    newTable[loc] = table_[i];
+                    newCnt++;
+                    break;
+                }
+                loc = prober_.next();
             }
+        } else if(table_[i] != nullptr) {
+            delete table_[i];
         }
-        delete table_[i];
     }
+    cnt = newCnt;
+    del = 0;
     table_ = newTable;
 }
 
